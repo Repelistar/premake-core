@@ -133,6 +133,7 @@ xcodeproj.elements = {
 			xcodeproj.ENABLE_NS_ASSERTIONS,
 			xcodeproj.ENABLE_STRICT_OBJC_MSGSEND,
 			xcodeproj.ENABLE_TESTABILITY,
+			xcodeproj.EXCLUDED_SOURCE_FILE_NAME,
 			xcodeproj.GCC_C_LANGUAGE_STANDARD,
 			xcodeproj.GCC_DYNAMIC_NO_PIC,
 			xcodeproj.GCC_NO_COMMON_BLOCKS,
@@ -1116,6 +1117,31 @@ function xcodeproj.ENABLE_TESTABILITY(cfg)
 	-- for testing
 	if cfg.name:startsWith('Debug') then
 		wl('ENABLE_TESTABILITY = YES;')
+	end
+end
+
+
+function xcodeproj.EXCLUDED_SOURCE_FILE_NAMES(cfg)
+	local excluded = {}
+	local prj = cfg.project
+
+	tree.traverse(prj.sourceTree, {
+		onLeaf = function (node)
+			local absPath = node.absolutePath
+			if not prj.files[absPath] and not cfg.files[absPath] then
+				table.insert(excluded, node.path)
+			end
+		end
+	})
+
+	if #excluded > 0 then
+		wl('EXCLUDED_SOURCE_FILE_NAMES = (')
+		indent()
+		for i = 1, #excluded do
+			wl('%s,', _escape(excluded[i]))
+		end
+		outdent()
+		wl(');')
 	end
 end
 

@@ -47,9 +47,10 @@ function Project.buildSourceTree(self, files)
 	local sourceTree = tree.new()
 
 	for i = 1, #files do
-		local filePath = path.getRelative(self.baseDirectory, files[i])
 		-- TODO: virtual paths, generated files...
-		tree.add(sourceTree, filePath)
+		local absolutePath = files[i]
+		local relativePath = path.getRelative(self.baseDirectory, absolutePath)
+		tree.add(sourceTree, relativePath, absolutePath)
 	end
 
 	tree.sort(sourceTree)

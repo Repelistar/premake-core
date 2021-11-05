@@ -27,6 +27,9 @@ int pmk_path_getDirectory(lua_State* L)
 {
 	char buffer[PATH_MAX];
 
+	if (lua_isnil(L, 1))
+		return (0);
+
 	const char* path = luaL_checkstring(L, 1);
 	pmk_getDirectory(buffer, path);
 	lua_pushstring(L, buffer);

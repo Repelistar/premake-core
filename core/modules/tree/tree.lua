@@ -27,23 +27,25 @@ end
 ---
 -- Add an item to a tree. If the item is already in the tree, nothing is added.
 --
--- @param itemPath
---    The new path to be added to the tree.
+-- @param relativePath
+--    The path to be added to the tree, relative to the tree root.
+-- @param absolutePath
+--    The full absolute path of the file.
 -- @returns
 --    The added item. If the item was already present in the tree, the existing
 --    item is returned.
 ---
 
-function tree.add(self, itemPath)
-	if itemPath == '.' or itemPath == '/' then
+function tree.add(self, relativePath, absolutePath)
+	if relativePath == '.' or relativePath == '/' then
 		return self
 	end
 
 	-- If needed, recurse to create any intermediate folder nodes needed by the path
-	local parentNode = tree.add(self, path.getDirectory(itemPath))
+	local parentNode = tree.add(self, path.getDirectory(relativePath), path.getDirectory(absolutePath))
 
 	-- Check to see if this node is already present in the tree
-	local itemName = path.getName(itemPath)
+	local itemName = path.getName(relativePath)
 	local itemNode = parentNode.children[itemName]
 	if itemNode ~= nil then
 		return itemNode
@@ -51,8 +53,9 @@ function tree.add(self, itemPath)
 
 	-- Nope, go ahead and create the new node...
 	itemNode = tree.new(itemName)
-	itemNode.path = itemPath
+	itemNode.path = relativePath
 	itemNode.parent = parentNode
+	itemNode.absolutePath = absolutePath
 
 	-- ...and add it to its parent node, keyed by both the file name for quick lookup
 	-- and indexed to maintain the original ordering
