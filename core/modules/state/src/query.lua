@@ -96,6 +96,14 @@ local function _testBlock(sourceBlock, blockCondition, blockOperation, globalSco
 	if blockOperation == REMOVE then
 		print('A')
 
+		-- -- This one catches sibling scope conflicts, but doesn't allow add-back
+		-- if not Condition.doesNotConflictWith(blockCondition, targetScopes, targetValues) then
+		-- 	return OUT_OF_SCOPE, OUT_OF_SCOPE
+		-- end
+
+		-- print ('A1')
+
+
 		-- Try to eliminate this block by comparing it to the current accumulated global state. Here
 		-- I don't care about strict scoping, and I don't care if some of the values being tested by
 		-- the block condition are missing (`NIL_MATCHES_ANY`). I'm only concerned if a value contained
@@ -112,11 +120,6 @@ local function _testBlock(sourceBlock, blockCondition, blockOperation, globalSco
 		end
 
 		print('B')
-
-		-- I'm thinking that right here I need a way to reject a block that has a CONFLICT with the target scope.
-		-- If I'm scoped to one project, and this block is for another project, it shouldn't be considered (and it
-		-- isn't UNKNOWN, is is OUT_OF_SCOPE).
-
 
 		-- If this block matches any scope in my hierarchy then this remove applies to me
 		-- ...but I need to reject if there any CONFLICTS with my initial scope (no inherit?)
