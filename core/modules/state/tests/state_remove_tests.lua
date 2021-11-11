@@ -322,37 +322,36 @@ function StateRemoveTests.workspaceAdds_projConfigRemoves_removesFromTargetProj(
 end
 
 
-function StateRemoveTests.workspaceAdds_projConfigRemoves_ignoresSiblingProjs()
+function StateRemoveTests.workspaceAdds_siblingProjConfigRemoves_removesFromProj()
 	workspace('Workspace1', function ()
 		projects { 'Project1', 'Project2', 'Project3' }
 		configurations { 'Debug', 'Release' }
 		platforms { 'macOS', 'iOS' }
 		defines { 'A', 'B', 'C' }
 
-		when({'projects:Project2'}, function ()
-			when({'configurations:Debug'}, function ()
-				removeDefines 'B'
-			end)
+		when({'projects:Project2', 'configurations:Debug' }, function ()
+			removeDefines 'B'
 		end)
 	end)
 
 	local wks = _global:select({ workspaces = 'Workspace1' })
 	local prj = wks:select({ projects = 'Project1' }):withInheritance()
+
+	-- _LOG_PREMAKE_QUERIES = true
+
 	test.isEqual({ 'A', 'B', 'C' }, prj.defines)
 end
 
 
-function StateRemoveTests.workspaceAdds_projConfigRemoves_removesFromTarget()
+function StateRemoveTests.workspaceAdds_projConfigRemoves_removesFromProjCfg()
 	workspace('Workspace1', function ()
 		projects { 'Project1', 'Project2', 'Project3' }
 		configurations { 'Debug', 'Release' }
 		platforms { 'macOS', 'iOS' }
 		defines { 'A', 'B', 'C' }
 
-		when({'projects:Project2'}, function ()
-			when({'configurations:Debug'}, function ()
-				removeDefines 'B'
-			end)
+		when({'projects:Project2', 'configurations:Debug' }, function ()
+			removeDefines 'B'
 		end)
 	end)
 
@@ -485,7 +484,7 @@ function StateRemoveTests.projectsAdds_projectRemoves_doesNotAddToConfig()
 
 	local wks = _global:select({ workspaces = 'Workspace1' }):withInheritance()
 	local prj = wks:select({ projects = 'Project1' }):withInheritance()
-	local cfg = prj:select({ configurations = 'Debug' })
+	local cfg = prj:select({ configurations = 'Debug' }):withInheritance()
 
 	test.isEqual({}, cfg.defines)
 end

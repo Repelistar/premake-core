@@ -35,10 +35,11 @@ local _allFieldsTested = {}
 
 function Condition.new(clauses)
 	local self = Type.assign(Condition, {
-		_fieldsTested = {},
-		_rootTest = nil
+		_fieldsTested = {}, -- which fields are tested by this condition
+		_rootTest = nil -- the root node of the expression tree
 	})
 
+	-- Parse the table of field-pattern pairs into an expression tree
 	local ok, result = pcall(function()
 		return Condition._parseCondition(self, clauses)
 	end)
@@ -53,8 +54,20 @@ end
 
 
 ---
--- Matching function, evaluates a tree of test clauses against a specific collection
--- of values and scopes.
+-- Matching function, evaluates the condition's expression tree against a specific scope
+-- and set of values.
+--
+-- @param values
+--    A table of key-value pairs containing the current accumulated set of field values.
+-- @param scope
+--    A table of key-values pairs representing the scope being evaluated; ex.
+--    `{ workspaces = 'Workspace1', projects = 'Projects1' }`.
+-- @param matchOnNil
+--    If set to `true`, clauses in the condition whose field does not exist in the provided
+--    scope and values will be considered passed. If `false`, clauses which do not have a
+--    corresponding field in the values will be failed.
+-- @returns
+--    True if the condition is matched by the provided scope and values, else false.
 ---
 
 local function _match(operation, values, scope, matchOnNil)
@@ -109,46 +122,15 @@ end
 
 
 ---
--- Returns a list of all fields that have mentioned in any condition which has been
--- parsed so far.
+-- Class method. Returns a list of all fields that have been mentioned by _any_
+-- condition which has been parsed so far. This is used during query evaluation
+-- to limit data merging to only those fields which could potentially have an
+-- impact on the query results. If a field is never mentioned by any condition,
+-- then there is no need to accumulate its data during query evaluation.
 ---
 
 function Condition.allFieldsTested()
 	return _allFieldsTested
-end
-
-
----
--- Checks a list of scopes to see if any is fully tested by this condition.
---
--- Given a scope `{ workspaces='W1', projects='P1' }`, this test will pass and return
--- `true` if the condition has clauses which test `workspaces` and `projects`. It will
--- fail and return false if no clause tests either of those fields.
---
--- This test does not check to see if the scope's values pass the test, only that there
--- *is* a test. Use `Condition.matchesScopeAndValues()` for a full test.
----
-
-function Condition.doesTestScopeValues(self, scopes)
-	local fieldsTested = self._fieldsTested
-
-	for i = 1, #scopes do
-		local scope = scopes[i]
-		local isScopeMatch = true
-
-		for field in pairs(scope) do
-			if not fieldsTested[field] then
-				isScopeMatch = false
-				break
-			end
-		end
-
-		if isScopeMatch then
-			return true
-		end
-	end
-
-	return false
 end
 
 
@@ -193,6 +175,16 @@ function Condition.matchesScopeAndValues(self, values, scopes, matchOnNil)
 	end
 
 	return nil
+end
+
+
+function Condition.doesNotConflictWith(self, scopes, values)
+	for i = 1, #scopes do
+		if not Condition.matchesValues(self, values, scopes[i], Condition.NIL_MATCHES_ANY) then
+			return false
+		end
+	end
+	return true
 end
 
 
