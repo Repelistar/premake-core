@@ -72,7 +72,7 @@ end
 --    into the full inheritance state, but skip over it for the target state".
 ---
 
-local function _testBlock(sourceBlock, blockCondition, blockOperation, globalScopes, globalValues, targetScopes, targetValues)
+local function _testBlock(state, blockCondition, blockOperation, globalScopes, globalValues, targetScopes, targetValues)
 	if blockOperation == ADD then
 
 		-- If this block can't match anything in the full inheritance state, then it definitely will
@@ -94,68 +94,99 @@ local function _testBlock(sourceBlock, blockCondition, blockOperation, globalSco
 	end
 
 	if blockOperation == REMOVE then
+
 		print('A')
+
+		-- Try to discard this block up front by testing for conflicting values in the full
+		-- inheritance state. If this block's condition is filtering on Workspace2 and I'm
+		-- filtering on Workspace1 then I know I can ignore the block. If this test passes,
+		-- then I know that the condition matches something up my (potential) inheritance tree.
+		-- If it fails then I know it has nothing to do with me.
+		--
+		-- Note that I'm passing in the values where I'd normally be passing in the scopes.
+		-- That's because I want to allow blocks which are testing the children of this scope
+		-- to pass this check. So if I'm targeting `{ Workspace1, Project1 }`, I want a block
+		-- testing `{ Workspace1, Project2 }` to get past this point. If Workspace1 contains
+		-- Project2, then it would appear in the list of projects contains in the aggregated
+		-- values.
+		--
+		-- Note also that you can't yet consider this block out of scope, since Project2 (in
+		-- this example) might get added to Workspace1 later on.
+		--
+		-- This is all so confusing; good luck.
+		if Condition.hasConflictingValues(blockCondition, globalValues, globalValues) then
+			return UNKNOWN, UNKNOWN
+		end
+
+		-- Now test against my actual scopes & inheritance, and note which target scope
+		-- was matched
+		local i = Condition.findCompatibleScope(blockCondition, targetScopes, targetValues)
+		print('B', i)
+
+		-- If the condition matches one my local (not inherited) scopes, then this block
+		-- applies to me specifically, and should be applied.
+		if i and i <= #state._localScopes then
+			return REMOVE, REMOVE
+		end
+
+		-- Otherwise, I've found a case where a value is being removed by one my
+		-- siblings. In order to keep everything additive, then value has already been
+		-- removed (or rather was never added) to my parent scopes, so now it is up to me
+		-- to add it back into my own results, since I'm not the scope that asked to remove
+		-- it. This is confusing; I tried to explain it better in the unit tests.
+		return REMOVE, ADD
 
 		-- -- This one catches sibling scope conflicts, but doesn't allow add-back
 		-- if not Condition.doesNotConflictWith(blockCondition, targetScopes, targetValues) then
 		-- 	return OUT_OF_SCOPE, OUT_OF_SCOPE
 		-- end
 
-		-- print ('A1')
+		-- -- Try to eliminate this block by comparing it to the current accumulated global state. Here
+		-- -- I don't care about strict scoping, and I don't care if some of the values being tested by
+		-- -- the block condition are missing (`NIL_MATCHES_ANY`). I'm only concerned if a value contained
+		-- -- in my global set of values *conflicts* with something being requested by the scope.
+		-- --
+		-- --   'configurations:Debug' == 'Debug' is a match
+		-- --   'configurations:Debug' == nil is a match
+		-- --   'configurations:Debug' == 'Release' is a fail
+		-- --
+		-- -- If the match *fails*, that means that this block will never apply to this particular scope
+		-- -- hierarchy, so I can reject it outright.
+		-- if not Condition.matchesValues(blockCondition, globalValues, globalValues, Condition.NIL_MATCHES_ANY) then
+		-- 	return UNKNOWN, UNKNOWN -- TODO: shouldn't this be OUT_OF_SCOPE?
+		-- end
 
+		-- -- If this block matches any scope in my hierarchy then this remove applies to me
+		-- -- ...but I need to reject if there any CONFLICTS with my initial scope (no inherit?)
+		-- if Condition.matchesScopeAndValues(blockCondition, targetValues, targetScopes, Condition.NIL_MATCHES_ANY) then
+		-- 	return REMOVE, REMOVE
+		-- end
 
-		-- Try to eliminate this block by comparing it to the current accumulated global state. Here
-		-- I don't care about strict scoping, and I don't care if some of the values being tested by
-		-- the block condition are missing (`NIL_MATCHES_ANY`). I'm only concerned if a value contained
-		-- in my global set of values *conflicts* with something being requested by the scope.
-		--
-		--   'configurations:Debug' == 'Debug' is a match
-		--   'configurations:Debug' == nil is a match
-		--   'configurations:Debug' == 'Release' is a fail
-		--
-		-- If the match *fails*, that means that this block will never apply to this particular scope
-		-- hierarchy, so I can reject it outright.
-		if not Condition.matchesValues(blockCondition, globalValues, globalValues, Condition.NIL_MATCHES_ANY) then
-			return UNKNOWN, UNKNOWN -- TODO: shouldn't this be OUT_OF_SCOPE?
-		end
+		-- -- local i = Condition.matchesScopeAndValues(blockCondition, targetValues, targetScopes, Condition.NIL_MATCHES_ANY)
+		-- -- if i then
+		-- -- 	if i <= #state._localScopes then
+		-- -- 		-- exact scope match
+		-- -- 		return REMOVE, REMOVE
+		-- -- 	else
+		-- -- 		-- inherited scope match
+		-- -- 		return REMOVE, OUT_OF_SCOPE
+		-- -- 	end
+		-- -- end
 
-		print('B')
+		-- -- Okay, doesn't apply to me, but does it apply to one of my parent containers (something "above" me), or
+		-- -- a sibling container (something "next to" or "below" me). If the block matches something in my global
+		-- -- scope then I can assumed that it will be handled before I even see it.
+		-- if Condition.matchesScopeAndValues(blockCondition, globalValues, globalScopes) then
+		-- 	return OUT_OF_SCOPE, REMOVE
+		-- end
 
-		-- If this block matches any scope in my hierarchy then this remove applies to me
-		-- ...but I need to reject if there any CONFLICTS with my initial scope (no inherit?)
-		if Condition.matchesScopeAndValues(blockCondition, targetValues, targetScopes, Condition.NIL_MATCHES_ANY) then
-			return REMOVE, REMOVE
-		end
+		-- -- So...this block passed the "soft" match against the global values, but failed against my
+		-- -- specific scoping. That means it is intended for a sibling of the target scope: a different
+		-- -- project, configuration, etc. from the one that is currently being built. In order to keep
+		-- -- things additive, that means I find myself in the uncomfortable position of having to *add*
+		-- -- the value in, rather than remove...see notes in test suite and (eventually) the README.
+		-- return REMOVE, ADD
 
-		print('C')
-
-		--[[
-		local i = Condition.matchesScopeAndValues(blockCondition, targetValues, targetScopes, Condition.NIL_MATCHES_ANY)
-		if i then
-			if i <= #state._localScopes then
-				-- exact scope match
-				return REMOVE, REMOVE
-			else
-				-- inherited scope match
-				return REMOVE, OUT_OF_SCOPE
-			end
-		end
-		]]
-
-		-- Okay, doesn't apply to me, but does it apply to one of my parent containers (something "above" me), or
-		-- a sibling container (something "next to" or "below" me). If the block matches something in my global
-		-- scope then I can assumed that it will be handled before I even see it.
-		if Condition.matchesScopeAndValues(blockCondition, globalValues, globalScopes) then
-			return OUT_OF_SCOPE, REMOVE
-		end
-		print('D')
-
-		-- So...this block passed the "soft" match against the global values, but failed against my
-		-- specific scoping. That means it is intended for a sibling of the target scope: a different
-		-- project, configuration, etc. from the one that is currently being built. In order to keep
-		-- things additive, that means I find myself in the uncomfortable position of having to *add*
-		-- the value in, rather than remove...see notes in test suite and (eventually) the README.
-		return REMOVE, ADD
 	end
 end
 
@@ -230,7 +261,7 @@ function Query.evaluate(state)
 			_debug('TARGET VALUES:', table.toString(targetValues))
 			_debug('GLOBAL VALUES:', table.toString(globalValues))
 
-			globalOperation, targetOperation = _testBlock(sourceBlock, blockCondition, blockOperation, globalScopes, globalValues, targetScopes, targetValues)
+			globalOperation, targetOperation = _testBlock(state, blockCondition, blockOperation, globalScopes, globalValues, targetScopes, targetValues)
 			_debug('GLOBAL RESULT:', globalOperation)
 			_debug('TARGET RESULT:', targetOperation)
 

@@ -2,7 +2,7 @@ local Condition = require('condition')
 local Field = require('field')
 local set = require('set')
 
-local ConditionDoesNotConflictTests = test.declare('ConditionDoesNotConflictTests', 'condition')
+local ConditionConflictTests = test.declare('ConditionConflictTests', 'condition')
 
 -- Scopes & values are keyed with Field instances
 local FLD_KIND = Field.get('kind')
@@ -14,9 +14,9 @@ local FLD_WORKSPACES = Field.get('workspaces')
 -- A condition with no clauses should never conflict with anything.
 ---
 
-function ConditionDoesNotConflictTests.returnsTrue_onEmptyCondition()
+function ConditionConflictTests.returnsFalse_onEmptyCondition()
 	local cond = Condition.new({})
-	test.isTrue(cond:doesNotConflictWith(
+	test.isFalse(cond:hasConflictingValues(
 		{},
 		{}
 	))
@@ -28,9 +28,9 @@ end
 -- should not be considered a conflict.
 ---
 
-function ConditionDoesNotConflictTests.returnsTrue_onMissingValue()
+function ConditionConflictTests.returnsFalse_onMissingValue()
 	local cond = Condition.new({ workspaces = 'Workspace1' })
-	test.isTrue(cond:doesNotConflictWith(
+	test.isFalse(cond:hasConflictingValues(
 		{},
 		{}
 	))
@@ -41,9 +41,9 @@ end
 -- If the values being tested do exist, and can match the condition, there is no conflict.
 ---
 
-function ConditionDoesNotConflictTests.returnsTrue_onScopeMatches()
+function ConditionConflictTests.returnsFalse_onScopeMatches()
 	local cond = Condition.new({ workspaces = 'Workspace1', projects = 'Project1' })
-	test.isTrue(cond:doesNotConflictWith(
+	test.isFalse(cond:hasConflictingValues(
 		{
 			{
 				[FLD_WORKSPACES] = {'Workspace1'},
@@ -54,9 +54,9 @@ function ConditionDoesNotConflictTests.returnsTrue_onScopeMatches()
 	))
 end
 
-function ConditionDoesNotConflictTests.returnsTrue_onValueMatches()
+function ConditionConflictTests.returnsFalse_onValueMatches()
 	local cond = Condition.new({ kind = 'ConsoleApplication' })
-	test.isTrue(cond:doesNotConflictWith(
+	test.isFalse(cond:hasConflictingValues(
 		{
 			{
 				[FLD_WORKSPACES] = {'Workspace1'},
@@ -74,9 +74,9 @@ end
 -- If the values being tested do exist, but cannot match the condition, it's a conflict.
 ---
 
-function ConditionDoesNotConflictTests.returnsFalse_onScopeMismatch()
+function ConditionConflictTests.returnsTrue_onScopeMismatch()
 	local cond = Condition.new({ workspaces = 'Workspace1', projects = 'Project1' })
-	test.isFalse(cond:doesNotConflictWith(
+	test.isTrue(cond:hasConflictingValues(
 		{
 			{
 				[FLD_WORKSPACES] = {'Workspace1'},
@@ -87,9 +87,9 @@ function ConditionDoesNotConflictTests.returnsFalse_onScopeMismatch()
 	))
 end
 
-function ConditionDoesNotConflictTests.returnsFalse_onValueMismatch()
+function ConditionConflictTests.returnsTrue_onValueMismatch()
 	local cond = Condition.new({ kind = 'ConsoleApplication' })
-	test.isFalse(cond:doesNotConflictWith(
+	test.isTrue(cond:hasConflictingValues(
 		{
 			{
 				[FLD_WORKSPACES] = {'Workspace1'},

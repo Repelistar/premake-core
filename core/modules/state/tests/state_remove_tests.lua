@@ -118,6 +118,7 @@ function StateRemoveTests.shouldAddToProject_whenRemovedByOtherProject_withNoInh
 		:select({ workspaces = 'Workspace1' })
 		:select({ projects = 'Project1' })
 
+	_LOG_PREMAKE_QUERIES = true
 	test.isEqual({ 'B' }, prj.defines)
 end
 
@@ -144,6 +145,42 @@ function StateRemoveTests.shouldAddToProject_whenRemovedByOtherProject_withInher
 	test.isEqual({ 'A', 'B', 'C' }, prj.defines)
 end
 
+
+---
+-- Found this one while testing removeFiles(); could probably be folded into one of the
+-- tests above but I don't want to mess with what's working. If a value is both added
+-- and removed "above" my target scope, I shouldn't see any of the removed values at all.
+---
+
+-- function StateRemoveTests.projectsAdds_projectRemoves_doesNotAddToConfig()
+-- 	workspace('Workspace1', function ()
+-- 		configurations { 'Debug', 'Release' }
+-- 		project('Project1', function ()
+-- 			defines { 'A' }
+-- 			removeDefines { 'A' }
+-- 		end)
+-- 	end)
+
+-- 	local wks = _global:select({ workspaces = 'Workspace1' }):withInheritance()
+-- 	local prj = wks:select({ projects = 'Project1' }):withInheritance()
+-- 	local cfg = prj:select({ configurations = 'Debug' }):withInheritance()
+
+-- 	test.isEqual({}, cfg.defines)
+-- end
+
+
+
+---
+-- TODO: block tests scope plus something else that isn't matched (like system or kind); should not apply the block, right?
+--   I think right now the missing value will be considered a pass? Or have I already handled this? it just gets
+--   removed from the parent and added back in everywhere else? I think?
+---
+
+
+
+
+
+----------------------------------------------------------------------------------------------
 
 
 -- function StateRemoveTests.workspaceAdds_projectRemoves_removesFromTarget_include()
@@ -488,27 +525,4 @@ end
 -- 	local wks = _global:select({ workspaces = 'Workspace1' })
 -- 	local prj = wks:select({ projects = 'Project1' })
 -- 	test.isEqual({ 'B' }, prj.defines)
--- end
-
-
--- ---
--- -- Found this one while testing removeFiles(); could probably be folded into one of the
--- -- tests above but I don't want to mess with what's working. If a value is both added
--- -- and removed "above" my target scope, I shouldn't see any of the removed values at all.
--- ---
-
--- function StateRemoveTests.projectsAdds_projectRemoves_doesNotAddToConfig()
--- 	workspace('Workspace1', function ()
--- 		configurations { 'Debug', 'Release' }
--- 		project('Project1', function ()
--- 			defines { 'A' }
--- 			removeDefines { 'A' }
--- 		end)
--- 	end)
-
--- 	local wks = _global:select({ workspaces = 'Workspace1' }):withInheritance()
--- 	local prj = wks:select({ projects = 'Project1' }):withInheritance()
--- 	local cfg = prj:select({ configurations = 'Debug' }):withInheritance()
-
--- 	test.isEqual({}, cfg.defines)
 -- end

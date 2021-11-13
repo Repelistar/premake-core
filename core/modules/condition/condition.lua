@@ -178,13 +178,29 @@ function Condition.matchesScopeAndValues(self, values, scopes, matchOnNil)
 end
 
 
-function Condition.doesNotConflictWith(self, scopes, values)
+---
+-- Here I'm checking for:
+--  1. scope is fully tested by the condition
+--  2. the state does not contain any conflicting values; missing values are okay
+-- Returns the index of the first scope which passes.
+---
+
+function Condition.findCompatibleScope(self, scopes, values)
+	-- TODO: if there is a conflicting value I can stop right now
+	-- TODO: unit test the shit out of this
+
+	return Condition.matchesScopeAndValues(self, values, scopes, Condition.NIL_MATCHES_ANY)
+end
+
+
+
+function Condition.hasConflictingValues(self, scopes, values)
 	for i = 1, #scopes do
 		if not Condition.matchesValues(self, values, scopes[i], Condition.NIL_MATCHES_ANY) then
-			return false
+			return true
 		end
 	end
-	return true
+	return false
 end
 
 
