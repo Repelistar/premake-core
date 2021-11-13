@@ -13,7 +13,7 @@ local UNKNOWN = 'UNKNOWN'
 
 
 -- Enabling the debug statements is a big performance hit.
-local function _debug(...) if _LOG_PREMAKE_QUERIES then print(...) end end
+-- local function _debug(...) if _LOG_PREMAKE_QUERIES then print(...) end end
 
 
 ---
@@ -95,97 +95,59 @@ local function _testBlock(state, blockCondition, blockOperation, globalScopes, g
 
 	if blockOperation == REMOVE then
 
-		print('A')
+		-- Test to see if this condition could match against any part of my potential
+		-- inheritance tree. If it can't match anything, in any potential inheritance
+		-- setup, then it doesn't apply to me at all I can safely ignore it. I test
+		-- for this by looking for any values current accumulated which conflict with
+		-- what is asked for by the condition. If the value hasn't been set yet, that's
+		-- considered okay. But if the value *is* set, but fails to match the condition,
+		-- that's a conflict and a fail.
+		--
+		-- So for a condition `{ workspaces='Workspace1' }...
+		--   - a value of `{ workspaces= nil }` is not a conflict
+		--   - a value of `{ workspaces='Workspace1' }` is not a conflict
+		--   - a value of `{ workspaces='Workspace2'}` is a conflct
+		--
+		-- Note that I'm passing in the values where I'd normally be passing in the
+		-- scopes (the second argument). That's to catch the case of a "sibling" scope.
+		-- If I'm trying to pull the state for `{ Workspace1, Project1 }` then a condition
+		-- testing `{ Workspace1, Project2 }` would not match any inherited scope, but if
+		-- Project2 is part of Workspace1, then it would appear in the Workspace1 values.
+		-- So this test detects state that lives "next" to me.
+		--
+		-- Also note that I can't yet mark it as OUT_OF_SCOPE because it is still
+		-- possible that more objects will get added to inheritance tree later on in the
+		-- script, which could change the outcome of this test.
+		--
+		-- This is confusing as hell. I tried to explain it better in the unit tests.
+		-- Basically, "look at all my possible parents and siblings, and see if this
+		-- condition could match any of them. If not, ignore this block".
 
-		-- Try to discard this block up front by testing for conflicting values in the full
-		-- inheritance state. If this block's condition is filtering on Workspace2 and I'm
-		-- filtering on Workspace1 then I know I can ignore the block. If this test passes,
-		-- then I know that the condition matches something up my (potential) inheritance tree.
-		-- If it fails then I know it has nothing to do with me.
-		--
-		-- Note that I'm passing in the values where I'd normally be passing in the scopes.
-		-- That's because I want to allow blocks which are testing the children of this scope
-		-- to pass this check. So if I'm targeting `{ Workspace1, Project1 }`, I want a block
-		-- testing `{ Workspace1, Project2 }` to get past this point. If Workspace1 contains
-		-- Project2, then it would appear in the list of projects contains in the aggregated
-		-- values.
-		--
-		-- Note also that you can't yet consider this block out of scope, since Project2 (in
-		-- this example) might get added to Workspace1 later on.
-		--
-		-- This is all so confusing; good luck.
 		if Condition.hasConflictingValues(blockCondition, globalValues, globalValues) then
 			return UNKNOWN, UNKNOWN
 		end
 
-		-- Now test against my actual scopes & inheritance, and note which target scope
-		-- was matched
-		local i = Condition.findCompatibleScope(blockCondition, targetScopes, targetValues)
-		print('B', i)
+		-- I now know that this block's condition could match something in my full
+		-- inheritance tree. Try the same test again, but this time test against the
+		-- full inheritance scopes, instead of passing the collected values for both
+		-- parameters. If no conflicts are found, that means that this block does apply
+		-- to me one way or the other, so the values should be removed. Or, "look at
+		-- myself and my direct line of inheritance, and see if this condition could
+		-- match any of them. If so, apply this block and remove the values".
 
-		-- If the condition matches one my local (not inherited) scopes, then this block
-		-- applies to me specifically, and should be applied.
-		if i and i <= #state._localScopes then
+		if not Condition.hasConflictingValues(blockCondition, globalScopes, globalValues) then
 			return REMOVE, REMOVE
 		end
 
-		-- Otherwise, I've found a case where a value is being removed by one my
-		-- siblings. In order to keep everything additive, then value has already been
-		-- removed (or rather was never added) to my parent scopes, so now it is up to me
-		-- to add it back into my own results, since I'm not the scope that asked to remove
-		-- it. This is confusing; I tried to explain it better in the unit tests.
+		-- If I get here, that means that the values are actually going to be removeed
+		-- by one of my siblings, or something "next" to me in the full inheritance tree.
+		-- In order to keep the exported projects additive only, the values would have
+		-- actually have been removed already by the shared parent in that tree (again, I
+		-- tried to explain this better in the unit tests). So since the value has effectively
+		-- not yet been set, and since I'm not the one who asked for it to be removed, I need
+		-- to add it here, rather than remove it.
+
 		return REMOVE, ADD
-
-		-- -- This one catches sibling scope conflicts, but doesn't allow add-back
-		-- if not Condition.doesNotConflictWith(blockCondition, targetScopes, targetValues) then
-		-- 	return OUT_OF_SCOPE, OUT_OF_SCOPE
-		-- end
-
-		-- -- Try to eliminate this block by comparing it to the current accumulated global state. Here
-		-- -- I don't care about strict scoping, and I don't care if some of the values being tested by
-		-- -- the block condition are missing (`NIL_MATCHES_ANY`). I'm only concerned if a value contained
-		-- -- in my global set of values *conflicts* with something being requested by the scope.
-		-- --
-		-- --   'configurations:Debug' == 'Debug' is a match
-		-- --   'configurations:Debug' == nil is a match
-		-- --   'configurations:Debug' == 'Release' is a fail
-		-- --
-		-- -- If the match *fails*, that means that this block will never apply to this particular scope
-		-- -- hierarchy, so I can reject it outright.
-		-- if not Condition.matchesValues(blockCondition, globalValues, globalValues, Condition.NIL_MATCHES_ANY) then
-		-- 	return UNKNOWN, UNKNOWN -- TODO: shouldn't this be OUT_OF_SCOPE?
-		-- end
-
-		-- -- If this block matches any scope in my hierarchy then this remove applies to me
-		-- -- ...but I need to reject if there any CONFLICTS with my initial scope (no inherit?)
-		-- if Condition.matchesScopeAndValues(blockCondition, targetValues, targetScopes, Condition.NIL_MATCHES_ANY) then
-		-- 	return REMOVE, REMOVE
-		-- end
-
-		-- -- local i = Condition.matchesScopeAndValues(blockCondition, targetValues, targetScopes, Condition.NIL_MATCHES_ANY)
-		-- -- if i then
-		-- -- 	if i <= #state._localScopes then
-		-- -- 		-- exact scope match
-		-- -- 		return REMOVE, REMOVE
-		-- -- 	else
-		-- -- 		-- inherited scope match
-		-- -- 		return REMOVE, OUT_OF_SCOPE
-		-- -- 	end
-		-- -- end
-
-		-- -- Okay, doesn't apply to me, but does it apply to one of my parent containers (something "above" me), or
-		-- -- a sibling container (something "next to" or "below" me). If the block matches something in my global
-		-- -- scope then I can assumed that it will be handled before I even see it.
-		-- if Condition.matchesScopeAndValues(blockCondition, globalValues, globalScopes) then
-		-- 	return OUT_OF_SCOPE, REMOVE
-		-- end
-
-		-- -- So...this block passed the "soft" match against the global values, but failed against my
-		-- -- specific scoping. That means it is intended for a sibling of the target scope: a different
-		-- -- project, configuration, etc. from the one that is currently being built. In order to keep
-		-- -- things additive, that means I find myself in the uncomfortable position of having to *add*
-		-- -- the value in, rather than remove...see notes in test suite and (eventually) the README.
-		-- return REMOVE, ADD
 
 	end
 end
@@ -212,9 +174,9 @@ function Query.evaluate(state)
 	local targetScopes = state._targetScopes
 	local globalScopes = state._globalScopes
 
-	_debug('TARGET SCOPES:', table.toString(targetScopes))
-	_debug('GLOBAL SCOPES:', table.toString(globalScopes))
-	_debug('INITIAL VALUES:', table.toString(targetValues))
+	-- _debug('TARGET SCOPES:', table.toString(targetScopes))
+	-- _debug('GLOBAL SCOPES:', table.toString(globalScopes))
+	-- _debug('INITIAL VALUES:', table.toString(targetValues))
 
 	-- The list of incoming source blocks is shared and shouldn't be modified. Set up a parallel
 	-- list to keep track of which blocks we've tested, and the per-block test results.
@@ -254,16 +216,16 @@ function Query.evaluate(state)
 			local blockCondition = sourceBlock.condition
 			local blockOperation = sourceBlock.operation
 
-			_debug('----------------------------------------------------')
-			_debug('BLOCK #:', i)
-			_debug('BLOCK OPER:', blockOperation)
-			_debug('BLOCK EXPR:', table.toString(blockCondition))
-			_debug('TARGET VALUES:', table.toString(targetValues))
-			_debug('GLOBAL VALUES:', table.toString(globalValues))
+			-- _debug('----------------------------------------------------')
+			-- _debug('BLOCK #:', i)
+			-- _debug('BLOCK OPER:', blockOperation)
+			-- _debug('BLOCK EXPR:', table.toString(blockCondition))
+			-- _debug('TARGET VALUES:', table.toString(targetValues))
+			-- _debug('GLOBAL VALUES:', table.toString(globalValues))
 
 			globalOperation, targetOperation = _testBlock(state, blockCondition, blockOperation, globalScopes, globalValues, targetScopes, targetValues)
-			_debug('GLOBAL RESULT:', globalOperation)
-			_debug('TARGET RESULT:', targetOperation)
+			-- _debug('GLOBAL RESULT:', globalOperation)
+			-- _debug('TARGET RESULT:', targetOperation)
 
 			if targetOperation == ADD and globalOperation == REMOVE then
 				-- I've hit the sibling of a scope which removed values. To stay additive, the values were actually
@@ -319,7 +281,7 @@ function Query.evaluate(state)
 
 			-- If accumulated state changed rerun previously skipped blocks to see if they should now be enabled
 			if globalOperation ~= UNKNOWN then
-				_debug('STATE CHANGED, rerunning skipped blocks')
+				-- _debug('STATE CHANGED, rerunning skipped blocks')
 				i = 1
 			else
 				i = i + 1
