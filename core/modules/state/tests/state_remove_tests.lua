@@ -17,7 +17,7 @@ end
 -- value should be excluded from the query results.
 ---
 
-function StateRemoveTests.shouldRemoveFromScope_whenRemovedAtScope()
+function StateRemoveTests.shouldRemoveFromGlobal_whenRemovedFromGlobal()
 	defines { 'A', 'B', 'C' }
 	removeDefines 'B'
 	test.isEqual({ 'A', 'C' }, _global.defines)
@@ -123,8 +123,8 @@ end
 
 
 ---
--- Same test as above but with inheritance enabled. Should now receive all
--- of the values set at the parent scope.
+-- Same test as above but with inheritance enabled. Should now receive all of the
+-- values set at the parent scope.
 ---
 
 function StateRemoveTests.shouldAddToProject_whenRemovedByOtherProject_withInheritance()
@@ -146,12 +146,11 @@ end
 
 
 ---
--- Found this one while testing removeFiles(); could probably be folded into one of the
--- tests above but I don't want to mess with what's working. If a value is both added
--- and removed "above" my target scope, I shouldn't see any of the removed values at all.
+-- If a value is added and then removed at a parent scope (project, in this case), and
+-- then that scope is inherited by a child (configuration), the remove should be applied.
 ---
 
-function StateRemoveTests.projectsAdds_projectRemoves_doesNotAddToConfig()
+function StateRemoveTests.shouldRemoveFromConfig_whenRemovedByProject_withInheritance()
 	workspace('Workspace1', function ()
 		configurations { 'Debug', 'Release' }
 		project('Project1', function ()
@@ -165,20 +164,92 @@ function StateRemoveTests.projectsAdds_projectRemoves_doesNotAddToConfig()
 		:select({ projects = 'Project1' }):withInheritance()
 		:select({ configurations = 'Debug' }):withInheritance()
 
-	-- _LOG_PREMAKE_QUERIES = true
 	test.isEqual({}, cfg.defines)
 end
 
 
-
 ---
--- TODO: block tests scope plus something else that isn't matched (like system or kind); should not apply the block, right?
---   I think right now the missing value will be considered a pass? Or have I already handled this? it just gets
---   removed from the parent and added back in everywhere else? I think?
+-- Non-scope related fields should also be considered when deciding whether or not to
+-- remove values. Start by checking to make sure a positive match is respected.
 ---
 
+function StateRemoveTests.shouldRemove_whenNonScopeValueIsMatched()
+	workspace('Workspace1', function ()
+		kind 'StaticLib'
+		defines { 'A' }
+		when({ 'kind:StaticLib' }, function ()
+			removeDefines { 'A' }
+		end)
+	end)
+
+	local wks = _global
+		:select({ workspaces = 'Workspace1' })
+
+	test.isEqual({}, wks.defines)
+end
 
 
+---
+-- If a non-scoped field is part of the condition, and the condition is *not* met,
+-- the remove should not be applied.
+---
+
+function StateRemoveTests.shouldIgnoreRemove_whenNonScopeValueNotMatched()
+	workspace('Workspace1', function ()
+		kind 'StaticLib'
+		defines { 'A' }
+		when({ 'kind:ConsoleApplication' }, function ()
+			removeDefines { 'A' }
+		end)
+	end)
+
+	local wks = _global
+		:select({ workspaces = 'Workspace1' })
+
+	test.isEqual({ 'A' }, wks.defines)
+end
+
+
+---
+-- If a non-scoped field is part of the condition, and no value has been set for
+-- that field, the remove should not be applied.
+---
+
+function StateRemoveTests.shouldIgnoreRemove_whenNonScopeValueMissing()
+	workspace('Workspace1', function ()
+		defines { 'A' }
+		when({ 'kind:ConsoleApplication' }, function ()
+			removeDefines { 'A' }
+		end)
+	end)
+
+	local wks = _global
+		:select({ workspaces = 'Workspace1' })
+
+	test.isEqual({ 'A' }, wks.defines)
+end
+
+
+---
+-- What if a block is not in scope at first, but comes into scope later?
+---
+
+function StateRemoveTests.shouldIgnoreRemove_whenNonScopeValueSetLater()
+	workspace('Workspace1', function ()
+		defines { 'A' }
+
+		when({ 'kind:ConsoleApplication' }, function ()
+			removeDefines { 'A' }
+		end)
+
+		kind 'ConsoleApplication'
+	end)
+
+	local wks = _global
+		:select({ workspaces = 'Workspace1' })
+
+	test.isEqual({}, wks.defines)
+end
 
 
 ----------------------------------------------------------------------------------------------
